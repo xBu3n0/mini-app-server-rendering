@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Golang + websocket</title>
+</head>
+<body>
+    <main id="root">
+        <div>Counter: <span go-var="counter"></span></div>
+        <button go-click="increment">Increment</button>
+
+        <div>
+            <input type="text" id="name" value="something">
+            <button go-click="append">Concatenar na string</button>
+        </div>
+
+        <div>
+            <div>
+                <span go-var="name"></span>
+                <span go-var="counter"></span>
+            </div>
+        </div>
+    </main>
+
+    <script type="module">
+        const socket = new WebSocket('ws://localhost:3000/ws')
+
+        const main = document.querySelector('main')
+        // variable_name -> [HTMLElement]
+        let map_variables = {}
+        // function_name -> [HTMLElement]
+        let map_functions = {}
+        // Variables -> Value
+        let variables = {}
+
+        function map_go(node, map_variables, map_functions) {
+            if (node.hasAttribute('go-var')) {
+                const attr = node.getAttribute('go-var')
+
+                if (map_variables[attr] == undefined) map_variables[attr] = []
+                map_variables[attr].push(node)
+                variables[attr] = null
+            }
+            if (node.hasAttribute('go-click')) {
+                const attr = node.getAttribute('go-click')
+                
+                const children = node.children
+                
+                if (map_functions[attr] == undefined) map_functions[attr] = []
+                map_functions[attr].push(node)
+
+                node.addEventListener('click', (e) => {
+                    const formData = {}
+                    const parent = node.parentNode
+                    const children = parent.children
+
+                    for (let i = 0; i < children.length; ++i) {
+                        if (children[i].tagName == 'INPUT') {
+                            formData[children[i].id] = children[i].value
+                        }
+                    }
+
+                    socket.send(`${attr}\r\n` + JSON.stringify(formData) + '\r\n' + JSON.stringify(variables))
+                })
+            }
+            
+            let children = node.children
+            for (let i = 0; i < children.length; ++i) {
+                map_go(children[i], map_variables, map_functions)
+            }
+        }
+        
+        function update_items(key, elements) {
+            for (let i = 0; i < elements[key].length; ++i) {
+                elements[key][i].innerHTML = `${variables[key]}`
+            }
+        }
+
+        map_go(main, map_variables, map_functions)
+
+        socket.onopen = () => {
+            console.log('Socket conectado')
+            socket.onmessage = (msg) => {
+                let values = JSON.parse(msg.data)
+
+                for (let key in values) {
+                    if (values[key] != variables[key]) {
+                        variables[key] = values[key]
+                        update_items(key, map_variables)
+                    }
+                }
+            }
+            socket.send("init\r\n\r\n" + JSON.stringify(variables))
+        }
+    </script>
+</body>
+</html>
